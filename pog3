@@ -1,0 +1,174 @@
+from collections import Counter, defaultdict
+import pandas as pd
+
+# Define the weights for the scoring system
+weights = {
+    'positional': 1.5,  # Multiplier for Positional Probabilities
+    'non_reappearance': 1,  # Multiplier for Non-Reappearance Probabilities
+    'non_reappearance_positional': 1.5,  # Multiplier for Non-Reappearance Probabilities (Specific Positions)
+    'numberwise': 1,  # Multiplier for Numberwise Probabilities
+    'reduced_numberwise': 1  # Multiplier for Reduced Numberwise Probabilities
+}
+
+# Mocked historical data (most recent at the top)
+data = [
+    "954",
+    "085",
+    "695",
+    "320",
+    "585",
+    "345",
+    "336",
+    "681",
+    "208",
+    "093"
+]
+
+# Convert data into position-based lists and calculate last seen indices
+position_data = {1: [], 2: [], 3: []}
+last_seen_position = {1: defaultdict(lambda: float('inf')), 2: defaultdict(lambda: float('inf')), 3: defaultdict(lambda: float('inf'))}
+last_seen_overall = defaultdict(lambda: float('inf'))
+
+# Track last appearance of each digit
+for draw_index, draw in enumerate(data):
+    for i, digit in enumerate(draw, start=1):
+        digit = int(digit)
+        position_data[i].append(digit)
+        last_seen_position[i][digit] = draw_index
+        last_seen_overall[digit] = draw_index
+
+# Count digit frequencies for each position
+position_counts = {pos: Counter(digits) for pos, digits in position_data.items()}
+total_draws = len(data)
+
+# Process 1: Positional Probabilities with Decay
+def calculate_positional_probabilities_with_decay(counts, total_draws):
+    probabilities = {}
+    for digit in range(10):
+        count = counts[digit]
+        decay_factor = 1 / (2 ** count)  # Decay by 50% for each row
+        probabilities[digit] = decay_factor if count > 0 else 1
+    total_prob = sum(probabilities.values())
+    return {digit: prob / total_prob for digit, prob in probabilities.items()}
+
+# Process 4: Non-Reappearance Probabilities (Any Rows) with Decay
+def calculate_non_reappearance_probabilities_with_decay(data, total_draws):
+    probabilities = {digit: 0 for digit in range(10)}
+    for digit in range(10):
+        reappearance_rows = sum(1 for row in data if str(digit) in row)
+        decay_factor = 1 / (1 + (reappearance_rows * 0.33))  # Decay by 33% for each row
+        probabilities[digit] = decay_factor
+    total_prob = sum(probabilities.values())
+    return {digit: prob / total_prob for digit, prob in probabilities.items()}
+
+# Process 5: Non-Reappearance Probabilities for Specific Positions with Decay
+def calculate_non_reappearance_positional_probabilities_with_decay(data, total_draws, position):
+    probabilities = {digit: 0 for digit in range(10)}
+    for digit in range(10):
+        reappearance_rows = sum(1 for row in data if str(digit) == row[position - 1])
+        decay_factor = 1 / (1 + (reappearance_rows * 0.33))  # Decay by 33% for each row
+        probabilities[digit] = decay_factor
+    total_prob = sum(probabilities.values())
+    return {digit: prob / total_prob for digit, prob in probabilities.items()}
+
+# Process 6: Numberwise Probabilities with Decay
+def calculate_numberwise_probabilities_with_decay(data, total_draws):
+    probabilities = {digit: 0 for digit in range(10)}
+    for digit in range(10):
+        occurrence_count = sum(row.count(str(digit)) for row in data)
+        decay_factor = 1 / (1 + (occurrence_count * 0.5))  # Decay by 50% for each row
+        probabilities[digit] = decay_factor
+    total_prob = sum(probabilities.values())
+    return {digit: prob / total_prob for digit, prob in probabilities.items()}
+
+# Process 7: Reduced Numberwise Probabilities with Decay
+def calculate_reduced_numberwise_probabilities_with_decay(data, total_draws):
+    probabilities = {digit: 0 for digit in range(10)}
+    for digit in range(10):
+        occurrence_count = sum(row.count(str(digit)) for row in data)
+        repetition_penalty = occurrence_count / total_draws  # Penalty for frequent digits
+        decay_factor = (1 / (1 + (occurrence_count * 0.5))) * (1 - repetition_penalty)
+        probabilities[digit] = decay_factor
+    total_prob = sum(probabilities.values())
+    return {digit: prob / total_prob for digit, prob in probabilities.items()}
+
+# Recalculate probabilities for each process with decay and apply weights
+positional_probabilities_decay = {
+    pos: {digit: weights['positional'] * prob for digit, prob in calculate_positional_probabilities_with_decay(position_counts[pos], total_draws).items()}
+    for pos in position_counts
+}
+
+non_reappearance_probabilities_decay = {
+    digit: weights['non_reappearance'] * prob for digit, prob in calculate_non_reappearance_probabilities_with_decay(data, total_draws).items()
+}
+
+non_reappearance_positional_probabilities_decay = {
+    pos: {digit: weights['non_reappearance_positional'] * prob for digit, prob in calculate_non_reappearance_positional_probabilities_with_decay(data, total_draws, pos).items()}
+    for pos in range(1, 4)
+}
+
+numberwise_probabilities_decay = {
+    digit: weights['numberwise'] * prob for digit, prob in calculate_numberwise_probabilities_with_decay(data, total_draws).items()
+}
+
+reduced_numberwise_probabilities_decay = {
+    digit: weights['reduced_numberwise'] * prob for digit, prob in calculate_reduced_numberwise_probabilities_with_decay(data, total_draws).items()
+}
+
+# Recalculate final scores for each position
+final_scores = {pos: {} for pos in range(1, 4)}
+for pos in range(1, 4):
+    for digit in range(10):
+        final_scores[pos][digit] = (
+            positional_probabilities_decay[pos][digit] *
+            non_reappearance_probabilities_decay[digit] *
+            non_reappearance_positional_probabilities_decay[pos][digit] *
+            numberwise_probabilities_decay[digit] *
+            reduced_numberwise_probabilities_decay[digit]
+        ) * 100000  # Scale the final score
+
+# Format final scores to two decimal places
+final_scores_formatted = {
+    pos: {digit: round(score, 2) for digit, score in final_scores[pos].items()}
+    for pos in range(1, 4)
+}
+
+# Function to calculate the score of a combination with adjusted penalties
+def calculate_combination_score_with_high_penalty(combination, final_scores_formatted):
+    digits = list(map(int, combination))
+    base_score = (
+        final_scores_formatted[1][digits[0]] *
+        final_scores_formatted[2][digits[1]] *
+        final_scores_formatted[3][digits[2]]
+    )
+    # Apply penalties for repeating digits
+    digit_counts = Counter(digits)
+    penalty = 1.0
+    for count in digit_counts.values():
+        if count == 2:  # Two repeated digits
+            penalty *= 0.1  # 90% reduction
+        elif count == 3:  # Three repeated digits
+            penalty *= 0.0025  # 99.75% reduction
+    return base_score * penalty
+
+# Recalculate all possible combinations with the adjusted penalty logic
+combinations = []
+for d1 in range(10):
+    for d2 in range(10):
+        for d3 in range(10):
+            combination = f"{d1}{d2}{d3}"
+            score = calculate_combination_score_with_high_penalty(combination, final_scores_formatted)
+            combinations.append((combination, score))
+
+# Sort combinations by score in descending order
+combinations.sort(key=lambda x: x[1], reverse=True)
+
+# Select the top 30 combinations
+top_30_combinations_high_penalty = combinations[:30]
+
+# Create a DataFrame for the top combinations
+df_top_combinations_high_penalty = pd.DataFrame(top_30_combinations_high_penalty, columns=['Combination', 'Score'])
+
+# Save the results to a file
+output_file_new_top_combinations = "/mnt/data/new_top_30_combinations_high_penalty.csv"
+df_top_combinations_high_penalty.to_csv(output_file_new_top_combinations, index=False)
