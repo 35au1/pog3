@@ -1,0 +1,146 @@
+
+# Script Explanation
+
+## Overview
+This script analyzes historical 3-digit number draws to calculate probabilities for digits and predict the most probable next combinations. It incorporates penalties for repeating digits and allows weighted adjustments for different calculations.
+
+---
+
+## Step-by-Step Explanation
+
+### Step 1: Define Weights
+The script defines weights to control the relative importance of each probability type in the final score calculation. The default weights are as follows:
+weights = {
+    'positional': 1.5,
+    'non_reappearance': 1,
+    'non_reappearance_positional': 1.5,
+    'numberwise': 1,
+    'reduced_numberwise': 1
+}
+
+### Purpose:
+- positional: Adjusts the influence of digit frequencies at specific positions.
+- non_reappearance: Adjusts the influence of a digit's absence in past rows.
+- non_reappearance_positional: Adjusts the influence of a digit's absence at specific positions.
+- numberwise: Adjusts the influence of digit appearances anywhere in the number.
+- reduced_numberwise: Accounts for penalties on frequently appearing digits.
+
+---
+
+### Step 2: Load Historical Data
+The script uses a predefined historical dataset where each string represents a 3-digit draw result, with the most recent draw at the top. For example:
+data = [
+    "319", "784", "212", "646", "177",
+    "534", "987", "854", "600", "923",
+    "821", "484", "922", "231"
+]
+
+### Purpose:
+The historical data serves as the foundation for all probability calculations. It allows the script to analyze trends, frequencies, and absences.
+
+---
+
+### Step 3: Process Data for Each Position
+The script separates the digits into three positions (1, 2, and 3) and tracks the last appearance of each digit in specific positions and overall.
+
+Generated data structures:
+- position_data: Lists all digits in each position.
+- last_seen_position: Tracks the row index of the last appearance of each digit in each position.
+- last_seen_overall: Tracks the row index of the last appearance of each digit anywhere.
+
+---
+
+### Step 4: Count Digit Frequencies
+Using Counter, the script counts how often each digit has appeared in each position. These frequency counts are crucial for calculating Positional Probabilities.
+
+Example:
+position_counts = {1: Counter({3: 2, 7: 2, ...}), 2: Counter({1: 3, 8: 2, ...}), 3: Counter({9: 2, 4: 3, ...})}
+
+---
+
+### Step 5: Calculate Probabilities
+The script calculates multiple types of probabilities, each with specific logic:
+
+#### (a) Positional Probabilities with Decay
+Calculates the probability of a digit appearing in a specific position. The probability reduces exponentially (by 50%) with each additional occurrence:
+P(digit) = 1 / (2^count)
+
+#### (b) Non-Reappearance Probabilities
+Calculates the probability of a digit based on how many rows have passed since its last appearance. The probability decays by 33% for each additional missed row:
+P(digit) = 1 / (1 + (missed_rows * 0.33))
+
+#### (c) Non-Reappearance in Specific Positions
+Similar to (b) but considers the last appearance of digits in specific positions.
+
+#### (d) Numberwise Probabilities
+Calculates the probability of a digit appearing anywhere in the number. Frequent occurrences decrease this probability.
+
+#### (e) Reduced Numberwise Probabilities
+Adds an additional penalty for digits that frequently appear across multiple draws.
+
+---
+
+### Step 6: Combine Probabilities into Final Scores
+For each digit in each position, the script combines all probabilities, applies the respective weights, and scales the result by 100,000.
+
+Example:
+final_scores[pos][digit] = (
+    positional_probabilities[pos][digit] *
+    non_reappearance_probabilities[digit] *
+    non_reappearance_positional_probabilities[pos][digit] *
+    numberwise_probabilities[digit] *
+    reduced_numberwise_probabilities[digit]
+) * 100000
+
+The Final Scores are then stored in a table where each digit has a score for positions 1, 2, and 3.
+
+---
+
+### Step 7: Generate Top 30 Combinations
+The script evaluates all possible 3-digit combinations (000 to 999) and calculates their scores. It applies penalties for repeated digits:
+- 90% reduction for two repeated digits.
+- 99.75% reduction for three repeated digits.
+
+Example logic for penalties:
+if count == 2:
+    penalty *= 0.1  # Reduce by 90%
+elif count == 3:
+    penalty *= 0.0025  # Reduce by 99.75%
+
+The combinations are sorted by score, and the top 30 are saved in a separate file.
+
+---
+
+### Step 8: Outputs
+The script generates the following CSV files:
+
+1. positional_probabilities_decay.csv  
+   - Contains probabilities of digits appearing in positions 1, 2, and 3 with decay applied.
+
+2. non_reappearance_probabilities_decay.csv  
+   - Contains probabilities based on the absence of digits in any row.
+
+3. non_reappearance_positional_probabilities_decay.csv  
+   - Contains probabilities based on the absence of digits in specific positions.
+
+4. numberwise_probabilities_decay.csv  
+   - Contains probabilities of digits appearing anywhere in the number.
+
+5. reduced_numberwise_probabilities_decay.csv  
+   - Contains probabilities with penalties for frequently appearing digits.
+
+6. final_scores.csv  
+   - Contains the combined probabilities for each digit in positions 1, 2, and 3.
+
+7. top_30_combinations.csv  
+   - Contains the 30 best-scoring 3-digit combinations, sorted from highest to lowest score.
+
+---
+
+### Usage
+1. Update the historical data (data) with your dataset.
+2. Run the script to generate all probability files and the top 30 combinations.
+3. Adjust the weights or penalty logic to experiment with different configurations.
+
+---
+
